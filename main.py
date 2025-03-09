@@ -5,8 +5,32 @@ from transformers import BertTokenizer
 import torch.nn as nn
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
+import base64
 
-# --------- Model Components (same as in your notebook) ---------
+
+def get_base64_encoded_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+
+# Load local image
+try:
+    background_image = get_base64_encoded_image("image.jpeg")
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: linear-gradient(rgba(0, 0, 1, .9), rgba(0, 0, 0, .9)), url("data:image/jpeg;base64,{background_image}");
+            background-size: cover;
+            background-attachment: fixed;
+        }}
+        header {{visibility: hidden;}}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+except Exception as e:
+    st.warning(f"Unable to load background image: {e}")
+
 class MultiHeadAttention(nn.Module):
     def __init__(self, d_model, num_heads, dropout=0.1):
         super(MultiHeadAttention, self).__init__()
@@ -150,17 +174,9 @@ def load_model_and_tokenizer(model_path, tokenizer_info_path):
         max_len=model_info['max_length']
     )
     model.load_state_dict(checkpoint['model_state_dict'])
-    with open(tokenizer_info_path, "r") as f:
-        lines = f.readlines()
-        # These values are used for verification only.
-        cpp_vocab_size_loaded = int(lines[0].split(":")[1].strip())
-        ps_vocab_size_loaded = int(lines[1].split(":")[1].strip())
-        tokenizer_type_loaded = lines[2].split(":")[1].strip()
+       
     bert_tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    st.write("Loaded Tokenizer Info:")
-    st.write(f"C++ vocab size: {cpp_vocab_size_loaded}")
-    st.write(f"Pseudocode vocab size: {ps_vocab_size_loaded}")
-    st.write(f"Tokenizer type: {tokenizer_type_loaded}")
+ 
     return model, bert_tokenizer
 
 def tokenize_and_numericalize_test_bert(text, tokenizer, max_len=128):
@@ -195,20 +211,16 @@ def translate_code_to_pseudocode_bert(model, src_sequence, max_len, device, toke
     translated_text = tokenizer.convert_tokens_to_string(trg_tokens[1:-1])
     return translated_text
 
-# --------- Streamlit App Interface ---------
 st.title("C++ to Pseudocode Translator")
 st.write("Enter your C++ code below and click Translate.")
 
-# Paths to saved model and tokenizer info
 
 MODEL_SAVE_PATH = hf_hub_download(repo_id="izaanishaq/cpp-to-pseudocode", filename="cpp_to_pseudocode_model_bert_20epoch.pth")
 TOKENIZER_INFO_PATH = hf_hub_download(repo_id="izaanishaq/cpp-to-pseudocode", filename="tokenizer_info_cpp_to_ps_bert_20epoch.txt")
 
 
-# Determine device (GPU if available)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# Load model and tokenizer (cached on first run)
 with st.spinner("Loading model..."):
     model, tokenizer = load_model_and_tokenizer(MODEL_SAVE_PATH, TOKENIZER_INFO_PATH)
     model.to(device)
